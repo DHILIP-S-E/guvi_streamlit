@@ -3,16 +3,18 @@ import requests
 import re
 import json
 import os
-import time
 import base64
-from io import BytesIO
 
 apiKey = "ee7a4bbf-c19c-4900-8025-7014e28daac5"
 
 # Function to encode image to base64
 def get_base64_image(image_file):
-    with open(image_file, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
+    try:
+        with open(image_file, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except FileNotFoundError:
+        st.error(f"Image file not found: {image_file}")
+        return None
 
 # Function to generate UI code from API
 def apiFunction(usersInputObj):
@@ -23,11 +25,10 @@ def apiFunction(usersInputObj):
     for inputObj in inputsArray:
         inputId = inputObj['id']
         if inputObj['type'] == 'text':
-            prompt = prompt.replace(inputId, usersInputObj.get(inputId, ''))
+            prompt = prompt.replace(inputId, usersInputObj[inputId])
         elif inputObj['type'] == 'file':
             path = usersInputObj[inputId]
             try:
-                file_name = os.path.basename(path)
                 with open(path, 'rb') as f:
                     filesData[inputId] = f.read()
             except FileNotFoundError:
@@ -43,19 +44,19 @@ def apiFunction(usersInputObj):
         'apiKey': apiKey
     })
 
-    response = requests.post('https://apiappstore.guvi.ai/api/output', data=textData, files=filesData)
-    
-    if response.status_code == 200:
+    try:
+        response = requests.post('https://apiappstore.guvi.ai/api/output', data=textData, files=filesData)
+        response.raise_for_status()
         output = response.json()
         return output['output']
-    else:
-        st.error("Failed to get a response from the API.")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to get a response from the API: {e}")
         return None
 
 # Function to download generated code
 def download_code(code, filename="generated_ui.py"):
     b64 = base64.b64encode(code.encode()).decode()  # Encode the code to base64
-    href = f'<a href="data:file/txt;base64,{b64}" download="{filename}">Download .py file</a>'
+    href = f'<a href="data:file/txt;base64,{b64}" download="{filename}" class="download-button">Download .py file</a>'
     st.markdown(href, unsafe_allow_html=True)
 
 # Get base64 of the background image
@@ -64,12 +65,69 @@ img_base64 = get_base64_image("images/back.png")
 # Streamlit App
 st.title("Streamlit UI Generator")
 
+# Adding custom CSS with background image, black fade, and white text
+if img_base64:
+    st.markdown(
+        f"""
+        <style>
+        /* General App Styling */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+        
+        .stApp {{
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.9)),
+                        url("data:image/png;base64,{img_base64}");
+            background-size: cover;
+            color: #ffffff; /* Default text color */
+        }}
+
+        .stTextInput input {{
+            color: #ffffff; /* White text color inside input fields */
+            background: rgba(0, 0, 0, 0.5); /* Slightly transparent black background for input fields */
+            border: 1px solid #ffffff; /* White border */
+            border-radius: 5px; /* Rounded corners for input fields */
+            padding: 10px; /* Padding inside input fields */
+        }}
+
+        .stButton button {{
+            background-color: #007bff; /* Button background color */
+            color: #ffffff; /* Button text color */
+            border: none; /* No border for button */
+            border-radius: 5px; /* Rounded corners for button */
+            padding: 10px 20px; /* Padding inside button */
+            cursor: pointer; /* Pointer cursor on hover */
+        }}
+
+        .stButton button:hover {{
+            background-color: #0056b3; /* Darker button background color on hover */
+        }}
+
+        /* Title, h3, and Label Styling */
+        .stApp h1, .stApp h3, .stApp label {{
+            color: #ffffff !important; /* White color for titles, h3, and labels */
+        }}
+
+        /* Download Button Styling */
+        .download-button {{
+            display: inline-block;
+            background-color: #28a745; /* Green background color */
+            color: #ffffff; /* White text color */
+            padding: 10px 20px; /* Padding inside button */
+            text-decoration: none; /* Remove underline from link */
+            border-radius: 5px; /* Rounded corners for button */
+            font-weight: bold; /* Bold text */
+            transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+        }}
+
+        .download-button:hover {{
+            background-color: #218838; /* Darker green on hover */
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 # Text Input
 requirements = st.text_area("Enter your requirements (Markdown supported):")
-
-# History of Generated UIs
-st.sidebar.title("Generated UIs")
-generated_ui_history = st.sidebar.text_area("Generated UIs", height=200)
 
 # Loading Spinner
 with st.spinner('Generating UI...'):
@@ -87,134 +145,19 @@ with st.spinner('Generating UI...'):
                 # Display the output
                 st.code(replaced_string, language='python')
                 
-                # Add to history
-                generated_ui_history += f"\n\n---\n\n{replaced_string}"
-                st.sidebar.text_area("Generated UIs", generated_ui_history, height=200)
-                
                 # Allow downloading the code
                 download_code(replaced_string)
             else:
                 st.warning("No output generated. Please check your requirements and try again.")
         else:
             st.warning("Please enter your requirements before generating the UI.")
-    time.sleep(1)
 
-# Adding custom CSS with animation effects and white paragraph text
-st.markdown(
-    f"""
-    <style>
-    /* General App Styling */
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
-    
-    .stApp {{
-        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.9)),
-                    url("data:image/png;base64,{img_base64}");
-        background-size: cover;
-        background-position: center;
-        font-family: 'Roboto', sans-serif;
-        color: #ffffff;  /* White text color for all elements */
-    }}
-    
-    /* Title Styling */
-    h1 {{
-        color: #ffffff !important; 
-        text-align: center;
-        font-weight: 700;
-        font-size: 2.5rem;
-        margin-bottom: 2rem;
-        animation: fadeIn 1s ease-out;
-    }}
-    
-    /* Input Box Styling */
-    .stTextArea > div > div > textarea {{
-        background-color: rgba(255, 255, 255, 0.1);
-        color: #ffffff;  /* White text color for input */
-        border: 1px solid rgba(255, 255, 255, 0.5);
-        border-radius: 8px;
-        padding: 10px;
-        font-size: 1rem;
-        transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    }}
+# About the Page
+st.markdown("""
+---
+### About This Page
+This tool is designed to help you quickly generate Streamlit UI code based on your requirements. 
+You can customize the interface, generate the code, and download it directly as a `.py` file.
 
-    .stTextArea > div > div > textarea:focus {{
-        border-color: #ffffff;
-        box-shadow: 0 0 5px rgba(255, 255, 255, 0.7);
-    }}
-    
-    /* Button Styling */
-    .stButton > button {{
-        background: linear-gradient(135deg, #f79533, #f37055, #ef4e7b, #a166ab, #5073b8, #1098ad, #07b39b, #6fba82);
-        color: #ffffff;  /* White text color for button */
-        border: none;
-        padding: 10px 20px;
-        border-radius: 50px;
-        font-size: 1rem;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        animation: buttonPulse 1s infinite;
-    }}
-    
-    .stButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.2);
-    }}
-    
-    .stButton > button:active {{
-        transform: translateY(1px);
-    }}
-
-    /* Card-Like Container Styling */
-    .stTextArea, .stButton {{
-        margin: 0 auto;
-        max-width: 600px;
-        padding: 20px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 16px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        margin-bottom: 2rem;
-        animation: fadeIn 1s ease-out;
-    }}
-    
-    /* Code Block Styling */
-    .stCodeBlock {{
-        background-color: rgba(0, 0, 0, 0.8);
-        color: #ffffff;  /* White text color for code block */
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        padding: 15px;
-        border-radius: 8px;
-        font-size: 1rem;
-        animation: fadeIn 1s ease-out;
-    }}
-
-    /* Paragraph Styling */
-    p {{
-        color: #ffffff;  /* White text color for paragraphs */
-        animation: fadeIn 1s ease-out;
-    }}
-    
-    /* Animation Keyframes */
-    @keyframes fadeIn {{
-        from {{
-            opacity: 0;
-        }}
-        to {{
-            opacity: 1;
-        }}
-    }}
-
-    @keyframes buttonPulse {{
-        0% {{
-            transform: scale(1);
-        }}
-        50% {{
-            transform: scale(1.05);
-        }}
-        100% {{
-            transform: scale(1);
-        }}
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+For more information or if you encounter any issues, feel free to reach out.
+""")
